@@ -1,0 +1,67 @@
+name: Build APK (no secrets)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20.19.4
+          cache: yarn
+
+      - name: Install JS deps
+        run: yarn install --frozen-lockfile
+
+      - name: Prebuild Android
+        run: |
+          yarn prebuild
+          chmod +x android/gradlew
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK components
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;27.1.12297006"
+          yes | sdkmanager --licenses
+
+      - name: Build release APK
+        run: yarn build-android
+
+      - name: Collect APKs
+        run: |
+          mkdir -p release
+          cp android/app/build/outputs/apk/release/*.apk release/
+          cd release && ls -lh && sha256sum *.apk > SHA256SUMS.txt
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v6
+        with:
+          name: maid-apk
+          path: release/
+          if-no-files-found: error
